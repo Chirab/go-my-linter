@@ -80,7 +80,6 @@ func (p *Parser) parseSingleFile() {
 }
 
 func (p *Parser) inspectNode(node *ast.File, fset *token.FileSet) {
-
 	ast.Inspect(node, func(n ast.Node) bool {
 		switch p.flag {
 		case "-p":
@@ -93,19 +92,17 @@ func (p *Parser) inspectNode(node *ast.File, fset *token.FileSet) {
 			}
 		case "-c":
 			if val, ok := n.(*ast.FuncDecl); ok {
-				if string(val.Doc.Text()[0]) != "" {
-					if unicode.IsUpper(rune(val.Doc.Text()[0])) != true || strings.HasSuffix(val.Doc.Text(), ".") {
-						log.Printf("Rewrite your comment at line %d at %s\n", fset.Position(val.Pos()).Line-1, fset.Position(val.Pos()).Filename)
+				if val.Doc.Text() != "" {
+					if string(val.Doc.Text()[0]) != "" {
+						if len(strings.Split(val.Doc.Text(), "\n")) == 2 {													
+							if unicode.IsUpper(rune(val.Doc.Text()[0])) == false || strings.HasSuffix(val.Doc.Text(), ".") == true {
+								log.Printf("Rewrite your comment at line %d at %s\n", fset.Position(val.Pos()).Line-1, fset.Position(val.Pos()).Filename)
+							}
+						}
 					}
 				}
 
 			}
-		case "-l":
-			if val, ok := n.(*ast.FuncLit); ok {
-				fmt.Println(val)
-
-			}
-
 		}
 		return true
 	})
