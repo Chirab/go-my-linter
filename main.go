@@ -18,7 +18,8 @@ func help() {
 	fmt.Printf(NoticeColor, "-h : display help\n")
 	fmt.Printf(NoticeColor, "-v : display version\n")
 	fmt.Printf(NoticeColor, "-p : inspect fmt.Println function call\n")
-	fmt.Printf(NoticeColor, "-c : inspect comments")
+	fmt.Printf(NoticeColor, "-c : inspect comments\n")
+	fmt.Printf(NoticeColor, "-ab : display abbreviations to name basic type variables")
 }
 
 func version() {
@@ -30,10 +31,10 @@ func main() {
 		return
 	}
 
-	if os.Args[1] == "-h" {
+	/*if os.Args[1] == "-h" {
 		help()
 		return
-	}
+	}*/
 
 	switch os.Args[1] {
 	case "-h":

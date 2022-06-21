@@ -1,4 +1,4 @@
-package fakefile
+package fakefiles
 
 import "fmt"
 

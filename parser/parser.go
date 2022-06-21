@@ -1,45 +1,63 @@
 package memcheck
 
 import (
-	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
-	"unicode"
 )
 
 type Parser struct {
-	flag     string
-	filename string
+	flag string
+	args string
 }
 
-func NewParser(flag, filename string) *Parser {
+func NewParser(flag, args string) *Parser {
 	return &Parser{
-		flag:     flag,
-		filename: filename,
+		flag: flag,
+		args: args,
 	}
 }
 
-func (p *Parser) Run() {
-	isFile, err := p.checkIFileOrDirectory()
+func (p *Parser) parseSingleFile() (*token.FileSet, *ast.File) {
+	fset := token.NewFileSet()
+	node, err := parser.ParseFile(fset, p.args, nil, parser.ParseComments)
 	if err != nil {
 		log.Fatal(err)
-		return
 	}
 
-	if !isFile {
-		p.recursiveFileParse()
-		return
+	return fset, node
+
+}
+
+func (p *Parser) Run() error {
+	fls, err := p.getRecursiveFiles()
+	if err != nil {
+		log.Fatal(err)
+		return err
 	}
 
-	if isGoFile := p.checkGoFile(p.filename); !isGoFile {
-		fmt.Println("Golang file is required : ", p.filename)
-		return
+	asts, fset, err := p.getAstFiles(fls)
+	if err != nil {
+		log.Fatal(err)
+		return err
 	}
-	p.parseSingleFile()
+
+	if err := p.processFiles(asts, fset); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (p *Parser) processFiles(astfiles []*ast.File, fs *token.FileSet) error {
+	for _, file := range astfiles {
+		InspectNode(p.flag, file, fs)
+	}
+	return nil
 }
 
 func (p *Parser) checkGoFile(f string) bool {
@@ -50,85 +68,43 @@ func (p *Parser) checkGoFile(f string) bool {
 	return true
 }
 
-func (p *Parser) checkIFileOrDirectory() (bool, error) {
-	file, err := os.Open(p.filename)
-	if err != nil {
-		return false, err
-	}
-
-	fileInfo, err := file.Stat()
-	if err != nil {
-		return false, err
-	}
-
-	if fileInfo.IsDir() {
-		return false, nil
-	}
-	defer file.Close()
-	return true, nil
-}
-
-func (p *Parser) parseSingleFile() {
-	fset := token.NewFileSet()
-	node, err := parser.ParseFile(fset, p.filename, nil, parser.ParseComments)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	p.inspectNode(node, fset)
-
-}
-
-func (p *Parser) inspectNode(node *ast.File, fset *token.FileSet) {
-	ast.Inspect(node, func(n ast.Node) bool {
-		switch p.flag {
-		case "-p":
-			if val, ok := n.(*ast.CallExpr); ok {
-				if ret, ok := val.Fun.(*ast.SelectorExpr); ok {
-					if ret.Sel.Name == "Println" {
-						log.Printf("Println call found on line %d at %s in package %s\n", fset.Position(val.Pos()).Line, fset.Position(val.Pos()).Filename, node.Name.Name)
-					}
-				}
+func (p *Parser) getRecursiveFiles() ([]string, error) {
+	fileList := make([]string, 0, 1)
+	err := filepath.Walk(p.args,
+		func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
 			}
-		case "-c":
-			if val, ok := n.(*ast.FuncDecl); ok {
-				if val.Doc.Text() != "" {
-					if string(val.Doc.Text()[0]) != "" {
-						if len(strings.Split(val.Doc.Text(), "\n")) == 2 {													
-							if unicode.IsUpper(rune(val.Doc.Text()[0])) == false || strings.HasSuffix(val.Doc.Text(), ".") == true {
-								log.Printf("Rewrite your comment at line %d at %s\n", fset.Position(val.Pos()).Line-1, fset.Position(val.Pos()).Filename)
-							}
-						}
-					}
-				}
 
+			if ok := p.checkGoFile(path); ok {
+				fileList = append(fileList, path)
 			}
-		}
-		return true
-	})
+
+			return nil
+		})
+	if err != nil {
+		return nil, err
+	}
+
+	return fileList, nil
 }
 
-func (p *Parser) recursiveFileParse() {
-	dir, err := os.Getwd()
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	directory := dir + "/" + p.filename
+func (p *Parser) getAstFiles(fileList []string) ([]*ast.File, *token.FileSet, error) {
+	astFileList := make([]*ast.File, 0, 1)
 	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, directory, nil, parser.ParseComments)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	if len(pkgs) == 0 {
-		return
-	}
-
-	for _, v := range pkgs {
-		for _, file := range v.Files {
-			p.inspectNode(file, fset)
+	for _, filepath := range fileList {
+		asf, err := parser.ParseFile(fset, filepath, nil, parser.ParseComments)
+		if err != nil {
+			log.Fatal(err)
+			return nil, nil, err
 		}
+
+		if asf == nil {
+			return nil, nil, nil
+		}
+
+		astFileList = append(astFileList, asf)
 	}
 
+	return astFileList, fset, nil
 }
