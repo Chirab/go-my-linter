@@ -1,10 +1,13 @@
 package memcheck
 
 import (
+	"bytes"
 	"go/ast"
+	"go/printer"
 	"go/token"
 	"log"
 	"strings"
+	"sync"
 	"unicode"
 )
 
@@ -14,19 +17,112 @@ type Inspect struct {
 	fset *token.FileSet
 }
 
+type basicNamingInfo struct {
+	line     int
+	filename string
+	typeLoop string
+}
+
 func InspectNode(flag string, node *ast.File, fset *token.FileSet) {
 	ast.Inspect(node, func(n ast.Node) bool {
 		switch flag {
 		case "-p":
 			findPrintln(node, n, fset)
 		case "-c":
-			findWrongComments(node, n, fset)
+			findWrongComments(n, fset)
+		case "-n":
+			// Do not use abbreviations to name basic type variable
+			findBasicNamingVariableForLoop(node, n, fset)
 		}
 		return true
 	})
 }
 
-func findWrongComments(node *ast.File, n ast.Node, fset *token.FileSet) {
+func convertNodeString(fset *token.FileSet, ret ast.Node) (string, error) {
+	var typeNameBuf bytes.Buffer
+	err := printer.Fprint(&typeNameBuf, fset, ret)
+	if err != nil {
+		log.Fatalf("failed printing %s", err)
+		return "", err
+	}
+	return typeNameBuf.String(), nil
+}
+
+func findRangeLoop(wg *sync.WaitGroup, rlp chan basicNamingInfo, n ast.Node, fset *token.FileSet) {
+	defer wg.Done()
+	bs := basicNamingInfo{}
+	if val, ok := n.(*ast.RangeStmt); ok {
+		if val.Value != nil {
+			if ret, ok := val.Value.(ast.Node); ok {
+				varname, err := convertNodeString(fset, ret)
+				if err != nil {
+					log.Fatal(err)
+				}
+
+				if len(varname) == 1 {
+					bs.filename = fset.Position(val.Pos()).Filename
+					bs.line = fset.Position(val.Pos()).Line
+					bs.typeLoop = "range"
+					rlp <- bs
+
+				}
+			}
+		}
+	}
+}
+
+func findForLoop(wg *sync.WaitGroup, flp chan basicNamingInfo, n ast.Node, fset *token.FileSet) {
+	defer wg.Done()
+	bs := basicNamingInfo{}
+	if val, ok := n.(*ast.ForStmt); ok {
+		if ret, ok := val.Init.(*ast.AssignStmt); ok {
+			t := ret.Lhs[0]
+			if ret, ok := t.(ast.Node); ok {
+				varname, err := convertNodeString(fset, ret)
+				if err != nil {
+					log.Fatal(err)
+				}
+
+				if len(varname) == 1 {
+					bs.filename = fset.Position(val.Pos()).Filename
+					bs.line = fset.Position(val.Pos()).Line
+					bs.typeLoop = "for"
+					flp <- bs
+				}
+			}
+		}
+	}
+}
+
+func findBasicNamingVariableForLoop(node *ast.File, n ast.Node, fset *token.FileSet) {
+
+	rlp := make(chan basicNamingInfo, 1)
+	flp := make(chan basicNamingInfo, 1)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go findForLoop(&wg, flp, n, fset)
+	go findRangeLoop(&wg, rlp, n, fset)
+
+	wg.Wait()
+	close(rlp)
+	close(flp)
+	for v := range rlp {
+		log.Printf("abbreviation to name basic type variables in %s loop at line %d in %s", v.typeLoop, v.line, v.filename)
+	}
+
+	for v := range flp {
+		log.Printf("abbreviation to name basic type variables in %s loop at line %d in %s", v.typeLoop, v.line, v.filename)
+	}
+}
+
+func test(te []*basicNamingInfo) {
+	for _, v := range te {
+		log.Printf("abbreviation to name basic type variables in %s loop at line %d in %s", v.typeLoop, v.line, v.filename)
+	}
+}
+
+func findWrongComments(n ast.Node, fset *token.FileSet) {
 	if val, ok := n.(*ast.FuncDecl); ok {
 		if val.Doc.Text() != "" {
 			if string(val.Doc.Text()[0]) != "" {

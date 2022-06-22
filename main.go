@@ -31,11 +31,6 @@ func main() {
 		return
 	}
 
-	/*if os.Args[1] == "-h" {
-		help()
-		return
-	}*/
-
 	switch os.Args[1] {
 	case "-h":
 		help()

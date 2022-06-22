@@ -22,17 +22,6 @@ func NewParser(flag, args string) *Parser {
 	}
 }
 
-func (p *Parser) parseSingleFile() (*token.FileSet, *ast.File) {
-	fset := token.NewFileSet()
-	node, err := parser.ParseFile(fset, p.args, nil, parser.ParseComments)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	return fset, node
-
-}
-
 func (p *Parser) Run() error {
 	fls, err := p.getRecursiveFiles()
 	if err != nil {
