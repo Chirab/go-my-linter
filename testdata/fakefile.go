@@ -12,7 +12,6 @@ func fakefile(s string) {
 	for a := 0; a < 10; a++ {
 		fmt.Println("okkkk")
 	}
-
 }
 
 // This is a fake comment.

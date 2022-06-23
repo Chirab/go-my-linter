@@ -33,6 +33,8 @@ func InspectNode(flag string, node *ast.File, fset *token.FileSet) {
 		case "-n":
 			// Do not use abbreviations to name basic type variable
 			findBasicNamingVariableForLoop(node, n, fset)
+		case "-l":
+			methodsUnderLimitLines(node, n, fset)
 		}
 		return true
 	})
@@ -116,12 +118,6 @@ func findBasicNamingVariableForLoop(node *ast.File, n ast.Node, fset *token.File
 	}
 }
 
-func test(te []*basicNamingInfo) {
-	for _, v := range te {
-		log.Printf("abbreviation to name basic type variables in %s loop at line %d in %s", v.typeLoop, v.line, v.filename)
-	}
-}
-
 func findWrongComments(n ast.Node, fset *token.FileSet) {
 	if val, ok := n.(*ast.FuncDecl); ok {
 		if val.Doc.Text() != "" {
@@ -144,5 +140,15 @@ func findPrintln(node *ast.File, n ast.Node, fset *token.FileSet) {
 				log.Printf("Println call found on line %d at %s in package %s\n", fset.Position(val.Pos()).Line, fset.Position(val.Pos()).Filename, node.Name.Name)
 			}
 		}
+	}
+}
+
+func methodsUnderLimitLines(node *ast.File, n ast.Node, fset *token.FileSet) {
+	if val, ok := n.(*ast.FuncDecl); ok {
+		sum := (fset.Position(val.Body.Rbrace).Line - fset.Position(val.Body.Lbrace).Line) - 1
+		if sum > 80 {
+			log.Printf("methods above 80 lines at %s", fset.Position(val.Body.Pos()))
+		}
+
 	}
 }
